@@ -1,0 +1,631 @@
+<!doctype html>
+<html lang="es">
+<head>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1" />
+<title>schedule · despachador</title>
+<style>
+  :root {
+    --ink: #0d1b2a;
+    --panel: #15263a;
+    --panel-2: #1d3350;
+    --line: #2b466b;
+    --signal: #ffb703;     /* ambar de tablero */
+    --signal-dim: #c98f00;
+    --go: #4ade80;
+    --hold: #64748b;
+    --alert: #f87171;
+    --paper: #eef2f6;
+    --muted: #94a8c0;
+    --mono: "JetBrains Mono", "SFMono-Regular", Consolas, "Liberation Mono", monospace;
+    --sans: "Inter", system-ui, -apple-system, "Segoe UI", sans-serif;
+  }
+  * { box-sizing: border-box; }
+  body {
+    margin: 0;
+    font-family: var(--sans);
+    background:
+      radial-gradient(900px 500px at 85% -10%, #1d3350 0%, transparent 60%),
+      var(--ink);
+    color: var(--paper);
+    min-height: 100vh;
+  }
+  header.bar {
+    display: flex; align-items: baseline; gap: 18px;
+    padding: 20px 28px;
+    border-bottom: 1px solid var(--line);
+    background: rgba(13,27,42,0.7);
+    position: sticky; top: 0; z-index: 20; backdrop-filter: blur(6px);
+  }
+  header.bar h1 {
+    font-family: var(--mono);
+    font-size: 18px; letter-spacing: 0.18em; text-transform: uppercase;
+    margin: 0; color: var(--signal); font-weight: 700;
+  }
+  header.bar .sub { font-family: var(--mono); font-size: 12px; color: var(--muted); letter-spacing: 0.1em; }
+  header.bar .clock { margin-left: auto; font-family: var(--mono); font-size: 13px; color: var(--muted); }
+  header.bar .clock b { color: var(--paper); }
+
+  main { max-width: 1180px; margin: 0 auto; padding: 24px 28px 80px; }
+
+  .toolbar { display: flex; gap: 12px; align-items: center; margin-bottom: 18px; flex-wrap: wrap; }
+  .toolbar .grow { flex: 1; }
+
+  button, .btn {
+    font-family: var(--mono); font-size: 12px; letter-spacing: 0.08em; text-transform: uppercase;
+    border: 1px solid var(--line); background: var(--panel-2); color: var(--paper);
+    padding: 9px 14px; border-radius: 6px; cursor: pointer; transition: .12s;
+  }
+  button:hover, .btn:hover { border-color: var(--signal); color: var(--signal); }
+  button.primary { background: var(--signal); color: var(--ink); border-color: var(--signal); font-weight: 700; }
+  button.primary:hover { background: #ffc233; color: var(--ink); }
+  button.ghost { background: transparent; }
+  button.danger:hover { border-color: var(--alert); color: var(--alert); }
+  button:disabled { opacity: .4; cursor: not-allowed; }
+
+  .grid { display: grid; grid-template-columns: 1fr; gap: 14px; }
+
+  .task {
+    border: 1px solid var(--line); border-radius: 10px; background: var(--panel);
+    padding: 0; overflow: hidden;
+  }
+  .task .head {
+    display: flex; align-items: center; gap: 14px; padding: 14px 18px;
+    border-left: 4px solid var(--hold);
+  }
+  .task.on .head { border-left-color: var(--go); }
+  .task.done .head { border-left-color: var(--signal-dim); }
+  .task .name { font-weight: 600; font-size: 15px; }
+  .task .endpoint { font-family: var(--mono); font-size: 12px; color: var(--muted); }
+  .task .spacer { flex: 1; }
+
+  .pill {
+    font-family: var(--mono); font-size: 10.5px; letter-spacing: .08em; text-transform: uppercase;
+    padding: 3px 8px; border-radius: 999px; border: 1px solid var(--line); color: var(--muted);
+  }
+  .pill.go { color: var(--go); border-color: rgba(74,222,128,.4); }
+  .pill.hold { color: var(--hold); }
+  .pill.internal { color: var(--signal); border-color: rgba(255,183,3,.4); }
+  .pill.done { color: var(--signal-dim); }
+
+  .task .meta {
+    display: grid; grid-template-columns: repeat(auto-fit, minmax(150px,1fr)); gap: 8px 22px;
+    padding: 12px 18px; border-top: 1px solid var(--line);
+    font-family: var(--mono); font-size: 12px; color: var(--muted);
+  }
+  .task .meta b { color: var(--paper); font-weight: 500; }
+  .task .actions { display: flex; gap: 8px; padding: 12px 18px; border-top: 1px solid var(--line); flex-wrap: wrap; }
+
+  .lastrun { padding: 0 18px 14px; }
+  .lastrun .box {
+    font-family: var(--mono); font-size: 12px; background: var(--ink);
+    border: 1px solid var(--line); border-radius: 6px; padding: 10px 12px;
+    white-space: pre-wrap; word-break: break-word; max-height: 220px; overflow: auto;
+  }
+  .st-success { color: var(--go); }
+  .st-http_error, .st-exception { color: var(--alert); }
+  .st-skipped { color: var(--hold); }
+
+  /* modal */
+  .modal-bg {
+    position: fixed; inset: 0; background: rgba(5,12,20,.75); display: none;
+    align-items: flex-start; justify-content: center; padding: 40px 16px; z-index: 50; overflow: auto;
+  }
+  .modal-bg.open { display: flex; }
+  .modal {
+    width: 100%; max-width: 640px; background: var(--panel); border: 1px solid var(--line);
+    border-radius: 12px; padding: 22px 24px;
+  }
+  .modal h2 { font-family: var(--mono); letter-spacing: .12em; text-transform: uppercase; font-size: 15px; color: var(--signal); margin: 0 0 18px; }
+  .field { margin-bottom: 14px; }
+  .field label { display: block; font-family: var(--mono); font-size: 11px; letter-spacing: .07em; text-transform: uppercase; color: var(--muted); margin-bottom: 5px; }
+  .field input, .field select, .field textarea {
+    width: 100%; background: var(--ink); border: 1px solid var(--line); border-radius: 6px;
+    color: var(--paper); padding: 9px 11px; font-family: var(--mono); font-size: 13px;
+  }
+  .field input:focus, .field select:focus, .field textarea:focus { outline: none; border-color: var(--signal); }
+  .field textarea { min-height: 64px; resize: vertical; }
+  .row2 { display: grid; grid-template-columns: 1fr 1fr; gap: 14px; }
+  .check { display: flex; align-items: center; gap: 8px; }
+  .check input { width: auto; }
+  .err { color: var(--alert); font-family: var(--mono); font-size: 12px; margin-top: 4px; }
+  .modal-actions { display: flex; gap: 10px; justify-content: flex-end; margin-top: 8px; }
+  .hint { font-family: var(--mono); font-size: 11px; color: var(--muted); margin-top: 3px; }
+
+  .empty { text-align: center; padding: 60px 20px; color: var(--muted); font-family: var(--mono); }
+  .toast {
+    position: fixed; bottom: 22px; left: 50%; transform: translateX(-50%);
+    background: var(--panel-2); border: 1px solid var(--signal); color: var(--paper);
+    padding: 12px 18px; border-radius: 8px; font-family: var(--mono); font-size: 13px;
+    z-index: 100; display: none;
+  }
+  .toast.show { display: block; }
+  @media (max-width: 560px) { .row2 { grid-template-columns: 1fr; } }
+</style>
+</head>
+<body>
+<header class="bar">
+  <h1>schedule</h1>
+  <span class="sub">torre de despacho · ejecuciones programadas</span>
+  <span class="clock" id="clock"></span>
+</header>
+
+<main>
+  <div class="toolbar">
+    <button class="primary" onclick="openCreate()">+ Nueva tarea</button>
+    <button class="ghost" onclick="loadTasks()">Refrescar</button>
+    <select id="filter" onchange="loadTasks()">
+      <option value="">Todas</option>
+      <option value="true">Solo activas</option>
+      <option value="false">Solo inactivas</option>
+    </select>
+    <span class="grow"></span>
+    <span class="sub" id="runtimeInfo" style="font-family:var(--mono);font-size:11px;color:var(--muted)"></span>
+  </div>
+
+  <div class="grid" id="tasks"></div>
+</main>
+
+<!-- modal tarea -->
+<div class="modal-bg" id="modalBg">
+  <div class="modal">
+    <h2 id="modalTitle">Nueva tarea</h2>
+    <form id="taskForm" onsubmit="return false;">
+      <input type="hidden" id="f_id" />
+      <div class="field">
+        <label>Nombre de la tarea</label>
+        <input id="f_task_name" />
+        <div class="err" id="e_task_name"></div>
+      </div>
+      <div class="row2">
+        <div class="field">
+          <label>Servicio (target)</label>
+          <input id="f_service_name" placeholder="sync o http://localhost:5100" list="targetList" oninput="syncTarget()" />
+          <datalist id="targetList"></datalist>
+          <div class="hint" id="targetHint">Escribe una clave target existente o una URL base directa.</div>
+        </div>
+        <div class="field">
+          <label>Visibilidad</label>
+          <select id="f_visibility"><option value="public">public</option><option value="internal">internal</option></select>
+        </div>
+      </div>
+      <div class="field">
+        <label>Endpoint (relativo o URL completa)</label>
+        <input id="f_endpoint" placeholder="/internal/jobs/full" />
+        <div class="err" id="e_endpoint"></div>
+      </div>
+      <div class="row2">
+        <div class="field">
+          <label>Metodo</label>
+          <select id="f_method"><option>GET</option><option selected>POST</option><option>PUT</option><option>PATCH</option><option>DELETE</option></select>
+        </div>
+        <div class="field">
+          <label>Auth</label>
+          <select id="f_auth_type" onchange="syncAuth()"><option value="none">none</option><option value="bearer">bearer</option><option value="header">header</option></select>
+        </div>
+      </div>
+      <div class="row2" id="authRow" style="display:none">
+        <div class="field" id="authHeaderField" style="display:none">
+          <label>Nombre del header</label>
+          <input id="f_auth_header_name" placeholder="X-Api-Key" />
+        </div>
+        <div class="field">
+          <label>Token</label>
+          <input id="f_auth_token" />
+        </div>
+      </div>
+      <div class="row2">
+        <div class="field">
+          <label>Query JSON</label>
+          <textarea id="f_query_json" placeholder='{"dry_run": false}'></textarea>
+          <div class="err" id="e_query_json"></div>
+        </div>
+        <div class="field">
+          <label>Body JSON</label>
+          <textarea id="f_body_json" placeholder='{"force": true}'></textarea>
+          <div class="err" id="e_body_json"></div>
+        </div>
+      </div>
+      <div class="row2">
+        <div class="field check"><input type="checkbox" id="f_trae_job_id" onchange="syncJob()" /><label style="margin:0">Trae job_id</label></div>
+        <div class="field" id="rutaJobField" style="display:none">
+          <label>Ruta job_id</label>
+          <input id="f_ruta_job_id" placeholder="body.job_id" />
+          <div class="err" id="e_ruta_job_id"></div>
+        </div>
+      </div>
+      <div class="row2">
+        <div class="field check"><input type="checkbox" id="f_daily" checked onchange="syncSchedule()" /><label style="margin:0">Diaria</label></div>
+        <div class="field check"><input type="checkbox" id="f_enabled" checked /><label style="margin:0">Activa</label></div>
+      </div>
+      <div class="row2">
+        <div class="field" id="horaField">
+          <label>Hora ejecucion (HH:MM:SS)</label>
+          <input id="f_hora_ejecucion" type="time" step="1" />
+          <div class="err" id="e_hora_ejecucion"></div>
+        </div>
+        <div class="field" id="runAtField" style="display:none">
+          <label>Run at (una vez)</label>
+          <input id="f_run_at" type="datetime-local" />
+          <div class="err" id="e_run_at"></div>
+        </div>
+      </div>
+      <div class="row2">
+        <div class="field">
+          <label>Zona horaria</label>
+          <select id="f_zona_horaria"></select>
+        </div>
+        <div class="field">
+          <label>Cantidad ejecuciones (vacio = ilimitado)</label>
+          <input id="f_cantidad_ejecuciones" type="number" min="1" />
+        </div>
+      </div>
+      <div class="err" id="e_form"></div>
+      <div class="modal-actions">
+        <button class="ghost" onclick="closeModal()">Cancelar</button>
+        <button class="primary" id="saveBtn" onclick="submitTask()">Guardar</button>
+      </div>
+    </form>
+  </div>
+</div>
+
+<div class="toast" id="toast"></div>
+
+<script>
+const API = "";
+let TARGETS = {};
+const TIMEZONES = [
+  "America/Mexico_City",
+  "America/Cancun",
+  "America/Monterrey",
+  "America/Tijuana",
+  "America/Mazatlan",
+  "UTC",
+];
+
+function toast(msg) {
+  const t = document.getElementById("toast");
+  t.textContent = msg; t.classList.add("show");
+  setTimeout(() => t.classList.remove("show"), 2600);
+}
+
+function tick() {
+  document.getElementById("clock").innerHTML = "ahora · <b>" + new Date().toLocaleTimeString() + "</b>";
+}
+setInterval(tick, 1000); tick();
+
+function formatErrorPayload(payload, fallback) {
+  const detail = payload && payload.detail ? payload.detail : payload;
+  if (!detail) return fallback || "Error desconocido";
+  if (typeof detail === "string") return detail;
+  const msg = detail.message || fallback || "Error";
+  const errors = Array.isArray(detail.errors) ? detail.errors : [];
+  return errors.length ? msg + ": " + errors.join(" | ") : msg;
+}
+
+async function readJsonSafe(response) {
+  try { return await response.json(); } catch (e) { return null; }
+}
+
+function ensureSelectOption(select, value, label) {
+  if (!value) return;
+  if (![...select.options].some(o => o.value === value)) {
+    select.appendChild(new Option(label || value, value));
+  }
+}
+
+function populateTimezoneSelect(defaultTimezone) {
+  const select = document.getElementById("f_zona_horaria");
+  const current = select.value || defaultTimezone || "America/Mexico_City";
+  const values = [...new Set([defaultTimezone || "America/Mexico_City", ...TIMEZONES].filter(Boolean))];
+  select.innerHTML = values.map(tz => `<option value="${escapeHtml(tz)}">${escapeHtml(tz)}</option>`).join("");
+  ensureSelectOption(select, current);
+  select.value = current;
+}
+
+function populateTargetList() {
+  const list = document.getElementById("targetList");
+  const options = [];
+  for (const [name, url] of Object.entries(TARGETS)) {
+    options.push(`<option value="${escapeHtml(name)}">${escapeHtml(name)} · ${escapeHtml(url)}</option>`);
+  }
+  list.innerHTML = options.join("");
+  syncTarget();
+}
+
+function syncTarget() {
+  const name = document.getElementById("f_service_name").value;
+  const hint = document.getElementById("targetHint");
+  if (!name) {
+    hint.textContent = "Si el endpoint es relativo necesitas una clave target o URL base; con URL completa puede ir vacio.";
+    return;
+  }
+  if (name.startsWith("http://") || name.startsWith("https://")) {
+    hint.textContent = `URL base directa: ${name}`;
+    return;
+  }
+  hint.textContent = TARGETS[name]
+    ? `URL resuelta: ${TARGETS[name]}`
+    : "Target no configurado. Si no es URL base directa, agregalo en app_config.targets.";
+}
+
+async function loadRuntime() {
+  try {
+    const r = await fetch(API + "/config/runtime");
+    if (!r.ok) {
+      const payload = await readJsonSafe(r);
+      document.getElementById("runtimeInfo").textContent = formatErrorPayload(payload, "Configuracion runtime no disponible");
+      return;
+    }
+    const c = await r.json();
+    TARGETS = c.targets || {};
+    populateTargetList();
+    populateTimezoneSelect(c.timezone);
+    document.getElementById("runtimeInfo").textContent =
+      `tz ${c.timezone} · worker ${c.scheduler_enabled ? "on/" + c.scheduler_interval_seconds + "s" : "off"} · ${c.mysql_database}`;
+  } catch (e) {
+    document.getElementById("runtimeInfo").textContent = "No se pudo consultar configuracion runtime: " + e.message;
+  }
+}
+
+function fmt(dt) { return dt ? new Date(dt + (dt.endsWith("Z") ? "" : "Z")).toLocaleString() : "—"; }
+
+async function loadTasks() {
+  const f = document.getElementById("filter").value;
+  const q = f === "" ? "" : "?enabled=" + f;
+  const r = await fetch(API + "/tasks" + q);
+  const el = document.getElementById("tasks");
+  if (!r.ok) {
+    const payload = await readJsonSafe(r);
+    el.innerHTML = '<div class="empty">' + escapeHtml(formatErrorPayload(payload, "No se pudieron cargar tareas")) + '</div>';
+    return;
+  }
+  const tasks = await r.json();
+  if (!tasks.length) { el.innerHTML = '<div class="empty">Sin tareas programadas. Crea la primera.</div>'; return; }
+  el.innerHTML = "";
+  for (const t of tasks) {
+    el.appendChild(renderTask(t));
+    loadLastRun(t.schedule_task_id);
+  }
+}
+
+function renderTask(t) {
+  const d = document.createElement("div");
+  d.className = "task" + (t.completed ? " done" : (t.enabled ? " on" : ""));
+  const visPill = t.visibility === "internal" ? '<span class="pill internal">internal</span>' : '<span class="pill">public</span>';
+  const statePill = t.completed ? '<span class="pill done">completada</span>'
+    : (t.enabled ? '<span class="pill go">activa</span>' : '<span class="pill hold">inactiva</span>');
+  d.innerHTML = `
+    <div class="head">
+      <div>
+        <div class="name">${escapeHtml(t.task_name)} ${t.running ? '<span class="pill go">corriendo</span>' : ''}</div>
+        <div class="endpoint">${escapeHtml(t.method)} ${escapeHtml(t.endpoint)}</div>
+      </div>
+      <div class="spacer"></div>
+      ${statePill} ${visPill}
+    </div>
+    <div class="meta">
+      <span>servicio <b>${escapeHtml(t.service_name || "—")}</b></span>
+      <span>programa <b>${t.daily ? "diaria " + (t.hora_ejecucion || "") : "una vez"}</b></span>
+      <span>proxima <b>${fmt(t.next_run_at)}</b></span>
+      <span>ultima <b>${fmt(t.last_run_at)}</b></span>
+      <span>ejec <b>${t.ejecuciones_realizadas}${t.cantidad_ejecuciones ? "/" + t.cantidad_ejecuciones : ""}</b></span>
+      <span>job_id <b>${t.trae_job_id ? (t.ruta_job_id || "si") : "no"}</b></span>
+    </div>
+    <div class="actions">
+      <button onclick="runTask(${t.schedule_task_id})">Ejecutar ahora</button>
+      <button class="ghost" onclick="toggleTask(${t.schedule_task_id}, ${t.enabled ? 1 : 0})">${t.enabled ? "Desactivar" : "Activar"}</button>
+      <button class="ghost" onclick='openEdit(${JSON.stringify(t)})'>Editar</button>
+      <button class="ghost" onclick="viewHistory(${t.schedule_task_id})">Historial</button>
+      <button class="ghost danger" onclick="delTask(${t.schedule_task_id})">Eliminar</button>
+    </div>
+    <div class="lastrun" id="last_${t.schedule_task_id}"></div>
+  `;
+  return d;
+}
+
+async function loadLastRun(id) {
+  try {
+    const r = await fetch(API + "/history?task_id=" + id + "&limit=1");
+    const h = await r.json();
+    const box = document.getElementById("last_" + id);
+    if (!box) return;
+    if (!h.length) { box.innerHTML = ""; return; }
+    const e = h[0];
+    const body = e.status === "success" ? (e.response_json) : (e.error_message || e.response_json);
+    box.innerHTML = `<div class="box"><span class="st-${e.status}">[${e.status}] HTTP ${e.http_status_code ?? "—"}</span>` +
+      (e.job_id ? `  job_id=${escapeHtml(e.job_id)}` : "") + `\n` +
+      escapeHtml(typeof body === "string" ? body : JSON.stringify(body, null, 2)).slice(0, 1200) + `</div>`;
+  } catch (e) {}
+}
+
+async function viewHistory(id) {
+  const r = await fetch(API + "/history?task_id=" + id + "&limit=25");
+  if (!r.ok) {
+    const payload = await readJsonSafe(r);
+    alert(formatErrorPayload(payload, "No se pudo cargar historial"));
+    return;
+  }
+  const h = await r.json();
+  const lines = h.map(e => `${fmt(e.fecha_ejecucion)}  [${e.status}] HTTP ${e.http_status_code ?? "—"}${e.job_id ? " job=" + e.job_id : ""}${e.error_message ? " · " + e.error_message : ""}`);
+  alert("Historial tarea " + id + "\n\n" + (lines.join("\n") || "sin ejecuciones"));
+}
+
+async function runTask(id) {
+  toast("Ejecutando...");
+  const r = await fetch(API + "/tasks/" + id + "/run", { method: "POST" });
+  if (r.ok) { const e = await r.json(); toast("Resultado: " + e.status + " (HTTP " + (e.http_status_code ?? "—") + ")"); }
+  else { const e = await readJsonSafe(r); toast("Error: " + formatErrorPayload(e, String(r.status))); }
+  loadTasks();
+}
+
+async function toggleTask(id, enabled) {
+  const r = await fetch(API + "/tasks/" + id);
+  if (!r.ok) {
+    const payload = await readJsonSafe(r);
+    toast(formatErrorPayload(payload, "No se pudo leer la tarea"));
+    return;
+  }
+  const t = await r.json();
+  t.enabled = !enabled;
+  const payload = toPayload(t);
+  const u = await fetch(API + "/tasks/" + id, { method: "PUT", headers: { "Content-Type": "application/json" }, body: JSON.stringify(payload) });
+  if (u.ok) toast(enabled ? "Tarea desactivada" : "Tarea activada");
+  else toast(formatErrorPayload(await readJsonSafe(u), "No se pudo cambiar estado"));
+  loadTasks();
+}
+
+async function delTask(id) {
+  if (!confirm("Eliminar la tarea " + id + "?")) return;
+  const r = await fetch(API + "/tasks/" + id, { method: "DELETE" });
+  if (r.ok || r.status === 204) toast("Tarea eliminada");
+  loadTasks();
+}
+
+// ---- modal ----
+function openCreate() {
+  document.getElementById("modalTitle").textContent = "Nueva tarea";
+  document.getElementById("taskForm").reset();
+  document.getElementById("f_id").value = "";
+  document.getElementById("f_daily").checked = true;
+  document.getElementById("f_enabled").checked = true;
+  populateTargetList();
+  populateTimezoneSelect(document.getElementById("f_zona_horaria").value || "America/Mexico_City");
+  clearErrors(); syncAuth(); syncJob(); syncSchedule();
+  document.getElementById("modalBg").classList.add("open");
+}
+
+function openEdit(t) {
+  document.getElementById("modalTitle").textContent = "Editar tarea " + t.schedule_task_id;
+  document.getElementById("f_id").value = t.schedule_task_id;
+  document.getElementById("f_task_name").value = t.task_name || "";
+  document.getElementById("f_service_name").value = t.service_name || "";
+  document.getElementById("f_visibility").value = t.visibility || "public";
+  document.getElementById("f_endpoint").value = t.endpoint || "";
+  document.getElementById("f_method").value = t.method || "POST";
+  document.getElementById("f_auth_type").value = t.auth_type || "none";
+  document.getElementById("f_auth_header_name").value = t.auth_header_name || "";
+  document.getElementById("f_auth_token").value = t.auth_token || "";
+  document.getElementById("f_query_json").value = t.query_json ? JSON.stringify(t.query_json, null, 2) : "";
+  document.getElementById("f_body_json").value = t.body_json ? JSON.stringify(t.body_json, null, 2) : "";
+  document.getElementById("f_trae_job_id").checked = !!t.trae_job_id;
+  document.getElementById("f_ruta_job_id").value = t.ruta_job_id || "";
+  document.getElementById("f_daily").checked = !!t.daily;
+  document.getElementById("f_enabled").checked = !!t.enabled;
+  document.getElementById("f_hora_ejecucion").value = normalizeTime24(t.hora_ejecucion || "");
+  document.getElementById("f_run_at").value = t.run_at ? t.run_at.slice(0, 16) : "";
+  ensureSelectOption(document.getElementById("f_zona_horaria"), t.zona_horaria || "");
+  document.getElementById("f_zona_horaria").value = t.zona_horaria || "America/Mexico_City";
+  document.getElementById("f_cantidad_ejecuciones").value = t.cantidad_ejecuciones ?? "";
+  clearErrors(); syncAuth(); syncJob(); syncSchedule(); syncTarget();
+  document.getElementById("modalBg").classList.add("open");
+}
+
+function closeModal() { document.getElementById("modalBg").classList.remove("open"); }
+function syncAuth() {
+  const t = document.getElementById("f_auth_type").value;
+  document.getElementById("authRow").style.display = t === "none" ? "none" : "grid";
+  document.getElementById("authHeaderField").style.display = t === "header" ? "block" : "none";
+}
+function syncJob() { document.getElementById("rutaJobField").style.display = document.getElementById("f_trae_job_id").checked ? "block" : "none"; }
+function syncSchedule() {
+  const daily = document.getElementById("f_daily").checked;
+  document.getElementById("horaField").style.display = daily ? "block" : "none";
+  document.getElementById("runAtField").style.display = daily ? "none" : "block";
+}
+
+function clearErrors() { document.querySelectorAll(".err").forEach(e => e.textContent = ""); }
+function escapeHtml(s) { return String(s ?? "").replace(/[&<>"']/g, c => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" }[c])); }
+
+function parseJsonField(id, errId) {
+  const v = document.getElementById(id).value.trim();
+  if (!v) return { ok: true, value: null };
+  try { const p = JSON.parse(v); if (typeof p !== "object" || Array.isArray(p)) throw 0; return { ok: true, value: p }; }
+  catch { document.getElementById(errId).textContent = "JSON invalido (debe ser objeto)"; return { ok: false }; }
+}
+
+function normalizeTime24(value) {
+  if (!value) return "";
+  return value.length === 5 ? value + ":00" : value;
+}
+
+function toPayload(t) {
+  return {
+    task_name: t.task_name, enabled: t.enabled, service_name: t.service_name || null,
+    visibility: t.visibility, endpoint: t.endpoint, method: t.method,
+    query_json: t.query_json || null, body_json: t.body_json || null,
+    auth_type: t.auth_type, auth_header_name: t.auth_header_name || null, auth_token: t.auth_token || null,
+    trae_job_id: !!t.trae_job_id, ruta_job_id: t.ruta_job_id || null,
+    hora_ejecucion: normalizeTime24(t.hora_ejecucion) || null, zona_horaria: t.zona_horaria || null,
+    daily: !!t.daily, run_at: t.run_at || null, cantidad_ejecuciones: t.cantidad_ejecuciones ?? null,
+  };
+}
+
+// validacion en cliente antes de enviar
+function validateClient() {
+  clearErrors();
+  let ok = true;
+  const name = document.getElementById("f_task_name").value.trim();
+  const endpoint = document.getElementById("f_endpoint").value.trim();
+  const service = document.getElementById("f_service_name").value.trim();
+  const daily = document.getElementById("f_daily").checked;
+  const trae = document.getElementById("f_trae_job_id").checked;
+  const auth = document.getElementById("f_auth_type").value;
+
+  if (!name) { document.getElementById("e_task_name").textContent = "Requerido"; ok = false; }
+  if (!endpoint) { document.getElementById("e_endpoint").textContent = "Requerido"; ok = false; }
+  const isAbs = endpoint.startsWith("http://") || endpoint.startsWith("https://");
+  if (!isAbs && !service) { document.getElementById("e_endpoint").textContent = "Endpoint relativo requiere servicio"; ok = false; }
+  if (trae && !document.getElementById("f_ruta_job_id").value.trim()) { document.getElementById("e_ruta_job_id").textContent = "Requerida si trae job_id"; ok = false; }
+  if (daily && !document.getElementById("f_hora_ejecucion").value.trim()) { document.getElementById("e_hora_ejecucion").textContent = "Requerida en tarea diaria"; ok = false; }
+  if (!daily && !document.getElementById("f_run_at").value) { document.getElementById("e_run_at").textContent = "Requerido en tarea de una vez"; ok = false; }
+  if (auth !== "none" && !document.getElementById("f_auth_token").value.trim()) { document.getElementById("e_form").textContent = "Token requerido para auth " + auth; ok = false; }
+
+  const q = parseJsonField("f_query_json", "e_query_json"); if (!q.ok) ok = false;
+  const b = parseJsonField("f_body_json", "e_body_json"); if (!b.ok) ok = false;
+  return { ok, query: q.value, body: b.value };
+}
+
+async function submitTask() {
+  const v = validateClient();
+  if (!v.ok) return;
+  const id = document.getElementById("f_id").value;
+  let runAt = document.getElementById("f_run_at").value;
+  if (runAt) runAt = runAt + ":00";
+  const payload = toPayload({
+    task_name: document.getElementById("f_task_name").value.trim(),
+    enabled: document.getElementById("f_enabled").checked,
+    service_name: document.getElementById("f_service_name").value.trim(),
+    visibility: document.getElementById("f_visibility").value,
+    endpoint: document.getElementById("f_endpoint").value.trim(),
+    method: document.getElementById("f_method").value,
+    query_json: v.query, body_json: v.body,
+    auth_type: document.getElementById("f_auth_type").value,
+    auth_header_name: document.getElementById("f_auth_header_name").value.trim(),
+    auth_token: document.getElementById("f_auth_token").value,
+    trae_job_id: document.getElementById("f_trae_job_id").checked,
+    ruta_job_id: document.getElementById("f_ruta_job_id").value.trim(),
+    hora_ejecucion: document.getElementById("f_hora_ejecucion").value.trim(),
+    zona_horaria: document.getElementById("f_zona_horaria").value.trim(),
+    daily: document.getElementById("f_daily").checked,
+    run_at: document.getElementById("f_daily").checked ? null : runAt,
+    cantidad_ejecuciones: document.getElementById("f_cantidad_ejecuciones").value ? parseInt(document.getElementById("f_cantidad_ejecuciones").value) : null,
+  });
+
+  const url = id ? API + "/tasks/" + id : API + "/tasks";
+  const method = id ? "PUT" : "POST";
+  const r = await fetch(url, { method, headers: { "Content-Type": "application/json" }, body: JSON.stringify(payload) });
+  if (r.ok) { toast(id ? "Tarea actualizada" : "Tarea creada"); closeModal(); loadTasks(); }
+  else {
+    const e = await r.json().catch(() => ({}));
+    document.getElementById("e_form").textContent = "Servidor: " + (typeof e.detail === "string" ? e.detail : JSON.stringify(e.detail || r.status));
+  }
+}
+
+populateTimezoneSelect("America/Mexico_City");
+populateTargetList();
+loadRuntime();
+loadTasks();
+</script>
+</body>
+</html>

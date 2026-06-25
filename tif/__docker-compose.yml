@@ -1,0 +1,21 @@
+services:
+  agro-tif:
+    build: .
+    container_name: agro-tif
+    ports:
+      - "5300:5300"
+    environment:
+      # Solo lo mínimo: conexión DynamoDB + localización de app_config.
+      APP_CONFIG_TABLE_NAME: app_config
+      APP_CONFIG_ITEM_ID: microservicio-tif
+      APP_CONFIG_ITEM_PK: config_id
+      AWS_REGION: us-east-1
+      DYNAMODB_USE_AWS: "true"
+      # DYNAMODB_ENDPOINT_URL: "http://dynamodb-local:8000"  # si usas Dynamo local
+      # AWS_ACCESS_KEY_ID_CUSTOM: ""
+      # AWS_SECRET_ACCESS_KEY_CUSTOM: ""
+      CONFIG_CACHE_TTL_SECONDS: "60"
+      CONFIG_FAIL_FAST: "false"
+    restart: unless-stopped
+    # Recuerda: entre contenedores usa el nombre interno (http://agro-tif:5300),
+    # nunca http://localhost:5300.

@@ -1,0 +1,9 @@
+fastapi==0.115.6
+uvicorn[standard]==0.34.0
+pydantic==2.10.4
+pydantic-settings==2.7.1
+PyMySQL==1.1.1
+boto3==1.35.92
+python-dotenv==1.0.1
+APScheduler==3.11.0
+pytz==2024.2

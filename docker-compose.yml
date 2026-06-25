@@ -1,0 +1,86 @@
+version: "3.7"
+services:
+  agro-sync:
+    build:
+      context: ./sync
+      dockerfile: Dockerfile
+    container_name: agro-sync
+    ports:
+      - "5100:5100"
+    env_file:
+      - ./sync/.env
+    restart: unless-stopped
+    # Para desarrollo con recarga automatica, descomenta el volumen y el command:
+    volumes:
+       - ./sync/app:/app/app
+    command: uvicorn app.main:app --host 0.0.0.0 --port 5100 --reload
+
+    extra_hosts:
+      - "host.docker.internal:host-gateway"
+
+    healthcheck:
+      test: ["CMD", "python", "-c", "import urllib.request; urllib.request.urlopen('http://localhost:5100/health')"]
+      interval: 30s
+      timeout: 5s
+      retries: 3
+  
+  agro-schedule:
+    build:
+      context: ./schedule
+      dockerfile: Dockerfile
+    container_name: agro-schedule
+    ports:
+      - "5200:5200"
+    env_file:
+      - ./schedule/.env
+    restart: unless-stopped
+    # Para desarrollo con recarga automatica, descomenta el volumen y el command:
+    volumes:
+       - ./schedule/app:/app/app
+    command: uvicorn app.main:app --host 0.0.0.0 --port 5200 --reload
+
+    extra_hosts:
+      - "host.docker.internal:host-gateway"
+
+    healthcheck:
+      test: ["CMD", "python", "-c", "import urllib.request; urllib.request.urlopen('http://localhost:5200/health')"]
+      interval: 30s
+      timeout: 5s
+      retries: 3
+  agro-filetif:
+    build:
+      context: ./tif
+      dockerfile: Dockerfile
+    container_name: agro-filetif
+    ports:
+      - "5300:5300"
+    env_file:
+      - ./tif/.env
+    #environment:
+       # Solo lo mínimo: conexión DynamoDB + localización de app_config.
+      #APP_CONFIG_TABLE_NAME: app_config
+      #APP_CONFIG_ITEM_ID: microservicio-tif
+      #APP_CONFIG_ITEM_PK: config_id
+      #AWS_REGION: us-east-1
+      #DYNAMODB_USE_AWS: "true"
+       # DYNAMODB_ENDPOINT_URL: "http://dynamodb-local:8000"  # si usas Dynamo local
+       # AWS_ACCESS_KEY_ID_CUSTOM: ""
+       # AWS_SECRET_ACCESS_KEY_CUSTOM: ""
+      #CONFIG_CACHE_TTL_SECONDS: "60"
+      #CONFIG_FAIL_FAST: "false"
+    restart: unless-stopped
+    # Recuerda: entre contenedores usa el nombre interno (http://agro-tif:5300),
+    # nunca http://localhost:5300.
+    # Para desarrollo con recarga automatica, descomenta el volumen y el command:
+    volumes:
+       - ./tif/app:/app/app
+    command: uvicorn app.main:app --host 0.0.0.0 --port 5300 --reload
+
+    extra_hosts:
+      - "host.docker.internal:host-gateway"
+
+    healthcheck:
+      test: ["CMD", "python", "-c", "import urllib.request; urllib.request.urlopen('http://localhost:5300/health')"]
+      interval: 30s
+      timeout: 5s
+      retries: 3
