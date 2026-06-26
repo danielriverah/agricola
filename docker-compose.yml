@@ -1,5 +1,7 @@
 version: "3.7"
+
 services:
+#<<<<<<==============  SYNC      ==========>>>>>>>>>
   agro-sync:
     build:
       context: ./sync
@@ -23,7 +25,7 @@ services:
       interval: 30s
       timeout: 5s
       retries: 3
-  
+#<<<<<<==============  SCHEDULE  ==========>>>>>>>>>
   agro-schedule:
     build:
       context: ./schedule
@@ -47,6 +49,7 @@ services:
       interval: 30s
       timeout: 5s
       retries: 3
+#<<<<<<==============  TIF       ==========>>>>>>>>>
   agro-filetif:
     build:
       context: ./tif
@@ -81,6 +84,54 @@ services:
 
     healthcheck:
       test: ["CMD", "python", "-c", "import urllib.request; urllib.request.urlopen('http://localhost:5300/health')"]
+      interval: 30s
+      timeout: 5s
+      retries: 3
+#<<<<<<==============  CLIMA     ==========>>>>>>>>>
+  agro-clima:
+    build:
+      context: ./clima
+      dockerfile: Dockerfile
+    container_name: agro-clima
+    ports:
+      - "5400:5400"
+    env_file:
+      - ./clima/.env
+    restart: unless-stopped
+    # Para desarrollo con recarga automatica, descomenta el volumen y el command:
+    volumes:
+       - ./clima/app:/app/app
+    command: uvicorn app.main:app --host 0.0.0.0 --port 5400 --reload
+
+    extra_hosts:
+      - "host.docker.internal:host-gateway"
+
+    healthcheck:
+      test: ["CMD", "python", "-c", "import urllib.request; urllib.request.urlopen('http://localhost:5400/health')"]
+      interval: 30s
+      timeout: 5s
+      retries: 3
+#<<<<<<==============  IA        ==========>>>>>>>>>
+  agro-ia:
+    build:
+      context: ./ia
+      dockerfile: Dockerfile
+    container_name: agro-ia
+    ports:
+      - "5500:5500"
+    env_file:
+      - ./ia/.env
+    restart: unless-stopped
+    # Para desarrollo con recarga automatica, descomenta el volumen y el command:
+    volumes:
+       - ./ia/app:/app/app
+    command: uvicorn app.main:app --host 0.0.0.0 --port 5500 --reload
+
+    extra_hosts:
+      - "host.docker.internal:host-gateway"
+
+    healthcheck:
+      test: ["CMD", "python", "-c", "import urllib.request; urllib.request.urlopen('http://localhost:5500/health')"]
       interval: 30s
       timeout: 5s
       retries: 3

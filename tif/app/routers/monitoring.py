@@ -70,9 +70,11 @@ def productions_raw(
 @router.get("/productions", summary="Producciones (lista normalizada)")
 def productions(
     limit: int = Query(500, ge=1, le=2000),
+    offset: int = Query(0, ge=0),
     cfg: AppConfig = Depends(require_mysql),
 ):
-    return {"items": build_service(cfg).productions.list_all(limit)}
+    return {"items": build_service(cfg).productions.list_all(limit,offset=offset)}
+
 
 
 @router.get("/productions/enriched", summary="Producciones con conteo de escenas")
@@ -526,7 +528,7 @@ def scenes_generate_all(
     def work(j: Job) -> None:
         processed = 0
         for scene_name, group in scene_groups.items():
-            print(f">>>SCENES GENERATE ALL INICIO: {scene_name}")
+            #print(f">>>SCENES GENERATE ALL INICIO: {scene_name}")
             if j.cancel_requested():
                 return
             #candidate_scenes = #[target["scene"] for target in group["targets"] if target.get("scene") is not None]
@@ -537,12 +539,12 @@ def scenes_generate_all(
             processed += 1
             j.processed = processed
             processed_targets: list[tuple[Any, Any]] = []
-            print(f">>>SCENES GENERATE ALL INICIO RECORRIDO: {group}")
+            #print(f">>>SCENES GENERATE ALL INICIO RECORRIDO: {group}")
             for target in group["scenes"]:
                 if j.cancel_requested():
                     return
                 production_id = target.get("production_id") or target.get("produccion_id")
-                print(f">>>RECORRIDO: {production_id}")
+                #print(f">>>RECORRIDO: {production_id}")
                 prod_internal_id = target.get("s3_monitoring_produccion_id")
 
                 production_payload = {
@@ -607,9 +609,9 @@ def scenes_generate_all(
                     prod_repo = ProductionRepository(writer)
                     prod_repo.update_tif_complete_at(prod_internal_id, str(scene_payload.get("fecha"))[:10])
                 processed_targets.append((production_id, prod_internal_id))
-                print(f">>>FIN RECORRIDO: {production_id}")
+                #print(f">>>FIN RECORRIDO: {production_id}")
 
-            print(f">>>SCENES GENERATE ALL processed_targets: {processed_targets}")
+            #print(f">>>SCENES GENERATE ALL processed_targets: {processed_targets}")
             for production_id, prod_internal_id in processed_targets:
                 if j.cancel_requested():
                     return
@@ -622,12 +624,12 @@ def scenes_generate_all(
             if j.cancel_requested():
                 return
             j.progress_note = f"{processed + 1}/{total_steps}: {scene_name} - limpiando bandas compartidas"
-            #shared_cleanup = svc.processor.cleanup_temp_scene(scene_name)
-            j.results.append({"scene_name": scene_name, "cleanup_shared": "shared_cleanup"})
+            shared_cleanup = svc.processor.cleanup_temp_scene(scene_name)
+            j.results.append({"scene_name": scene_name, "cleanup_shared": shared_cleanup})
             processed += 1
             j.processed = processed
             j.progress_note = f"{processed}/{total_steps}: {scene_name} - terminado"
-            print(f">>>SCENES GENERATE ALL FIN: {scene_name}")
+            #print(f">>>SCENES GENERATE ALL FIN: {scene_name}")
         '''
         for scene_name, group in scene_groups.items():
             if j.cancel_requested():

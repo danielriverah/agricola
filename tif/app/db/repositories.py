@@ -132,7 +132,6 @@ def _get_cte()->str:
                  es.scene_name,
                  es.fecha,
                  es.cloud_cover
-                 -- COALESCE(r.date_from, p.date_min)
              FROM p
              JOIN rules r
              JOIN s3_monitoring_escenas es
@@ -171,11 +170,78 @@ class ProductionRepository:
         writer = self._writer()
         return writer.execute(sql, (fecha, s3_monitoring_produccion_id, fecha))
     def list_all(self, limit: int = 500, offset: int = 0) -> list[dict]:
-        sql = (
-            f"SELECT {_cols(PRODUCTION_FIELDS)} FROM `{self.TABLE}` "
-            f"ORDER BY `s3_monitoring_produccion_id` LIMIT %s OFFSET %s"
+        sql = _get_cte()
+        #params=
+        # date_from, date_to, active_only, sobreescribir,produccion_id
+        params=[
+            None,
+            None,
+            1,
+            0,
+            None,
+            limit, offset
+        ]
+        sql += (
+            f"""
+                SELECT 
+                    pr.s3_monitoring_produccion_id,
+                    pr.produccion_id,
+                    pr.prefix,
+                    pr.monitoring,
+                    pr.max_dias_monitoring,
+                    pr.fecha_plantacion,
+                    pr.fecha_fin,pbox,
+                    pr.polygon_bbox,
+                    pr.tile_bbox,
+                    pr.tile_center_lat,
+                    pr.tile_center_lon,
+                    pr.tile_edge_meters,
+                    pr.fase2_completa_at,
+                    pr.poligono,
+                    f.folio,
+                    cc.nombre rancho
+                from p
+                join {self.TABLE} pr on pr.produccion_id=p.produccion_id
+            """
+            f"JOIN producciones f on f.produccion_id=pr.produccion_id "
+            f"JOIN centros_costos cc on cc.centro_costo_id=f.centro_costo_id "
+            "ORDER BY pr.s3_monitoring_produccion_id LIMIT %s OFFSET %s"
         )
-        return self.client.query(sql, (limit, offset))
+        try:
+            return self.client.query(sql, (params))
+        except  Exception as e:  # noqa: BLE001
+            return [{"error":e}]
+        # return [{"texto":sql}]
+        '''
+            # f"SELECT {_cols(PRODUCTION_FIELDS)} FROM `{self.TABLE}` pr"
+            f"""
+            SELECT 
+                    pr.s3_monitoring_produccion_id,
+                    pr.produccion_id,
+                    pr.prefix,
+                    pr.monitoring,
+                    pr.max_dias_monitoring,
+                    pr.fecha_plantacion,
+                    pr.fecha_fin,pbox,
+                    pr.polygon_bbox,
+                    pr.tile_bbox,
+                    pr.tile_center_lat,
+                    pr.tile_center_lon,
+                    pr.tile_edge_meters,
+                    pr.fase2_completa_at,
+                    pr.poligono,
+                    p.folio,
+                    cc.nombre rancho
+                FROM {self.TABLE} pr """
+            f"JOIN producciones p on p.produccion_id=pr.produccion_id "
+            f"JOIN centros_costos cc on cc.centro_costo_id=p.centro_costo_id "
+            "ORDER BY pr.s3_monitoring_produccion_id LIMIT %s OFFSET %s"
+        )
+        '''
+        #print(sql)
+        
+        return self.client.query(sql, (params))
+        # return self.client.query(sql, (limit, offset))
 
     def get_by_production_id(self, production_id: int | str) -> dict | None:
         print(f"TABLA CONSULTADA: {self.TABLE} \n campos: {PRODUCTION_FIELDS}")
